@@ -126,7 +126,21 @@ def _do_check() -> None:
     from packaging.version import InvalidVersion, Version
 
     try:
-        if Version(latest) > Version(current):
+        parsed_current = Version(current)
+    except InvalidVersion:
+        return
+
+    # Skip the nudge when the current install is a dev release — these are
+    # source / editable installs (e.g. ``0.0.1.dev1+g00d1e39b6``) whose
+    # code is *newer* than the latest stable PyPI release even though the
+    # version number is numerically lower (no matching git tag for
+    # hatch-vcs to derive from). Showing "upgrade to 1.0.2" would be a
+    # false positive in that case.
+    if parsed_current.is_devrelease or parsed_current.is_prerelease:
+        return
+
+    try:
+        if Version(latest) > parsed_current:
             from openjarvis.cli._install_detect import detect_install
 
             cmd = detect_install().upgrade_command

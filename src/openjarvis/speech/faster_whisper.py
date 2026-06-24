@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import tempfile
 from typing import List, Optional
 
@@ -106,10 +107,15 @@ class FasterWhisperBackend(SpeechBackend):
             model = self._ensure_model()
 
             # Write audio to a temp file (faster-whisper needs a file path)
+            # Use delete=False on Windows — PyAV/ffmpeg opens the file in a
+            # separate process and NamedTemporaryFile(delete=True) holds an
+            # exclusive lock that prevents it (#358).
             suffix = f".{format}" if not format.startswith(".") else format
-            with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as tmp:
+            tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+            try:
                 tmp.write(audio)
                 tmp.flush()
+                tmp.close()
 
                 kwargs = {}
                 if language:
@@ -117,6 +123,8 @@ class FasterWhisperBackend(SpeechBackend):
 
                 segments_iter, info = model.transcribe(tmp.name, **kwargs)
                 segments_list = list(segments_iter)
+            finally:
+                os.unlink(tmp.name)
         except Exception as exc:
             self._last_error = str(exc)
             raise
