@@ -63,6 +63,11 @@ def _ensure_identity_prompt(messages: list[Message], app_config) -> list[Message
     ``load_config()``. Config resolution is wrapped so a broken/missing
     config degrades to "no injection" rather than crashing the endpoint, but
     the failure is logged (per REVIEW.md — never silently swallow).
+
+    The user's ``system_prompt`` field takes precedence over the built-in
+    ``default_system_prompt``. Additionally, when ``system_prompt_path`` is
+    set and the file exists on disk, its contents are preferred. This makes
+    personality work for the regular web chat (not just managed agents/CLI).
     """
     if any(m.role == Role.SYSTEM for m in messages):
         return messages
@@ -70,11 +75,34 @@ def _ensure_identity_prompt(messages: list[Message], app_config) -> list[Message
     prompt = ""
     try:
         if app_config is not None:
-            prompt = app_config.agent.default_system_prompt or ""
+            cfg = app_config.agent
+            # 1. system_prompt_path (file on disk)
+            if cfg.system_prompt_path:
+                from pathlib import Path
+
+                sp_path = Path(cfg.system_prompt_path).expanduser()
+                if sp_path.is_file():
+                    prompt = sp_path.read_text(encoding="utf-8").strip()
+            # 2. system_prompt (inline)
+            if not prompt and cfg.system_prompt:
+                prompt = cfg.system_prompt.strip()
+            # 3. built-in default
+            if not prompt:
+                prompt = cfg.default_system_prompt or ""
         else:
             from openjarvis.core.config import load_config
 
-            prompt = load_config().agent.default_system_prompt or ""
+            cfg = load_config().agent
+            if cfg.system_prompt_path:
+                from pathlib import Path
+
+                sp_path = Path(cfg.system_prompt_path).expanduser()
+                if sp_path.is_file():
+                    prompt = sp_path.read_text(encoding="utf-8").strip()
+            if not prompt and cfg.system_prompt:
+                prompt = cfg.system_prompt.strip()
+            if not prompt:
+                prompt = cfg.default_system_prompt or ""
     except Exception:
         logging.getLogger("openjarvis.server").debug(
             "Identity system prompt resolution failed; "
@@ -85,6 +113,40 @@ def _ensure_identity_prompt(messages: list[Message], app_config) -> list[Message
 
     if not prompt:
         return messages
+
+    # Append SOUL.md / MEMORY.md / USER.md persona files when they exist
+    try:
+        from pathlib import Path as _Path
+
+        if app_config is not None:
+            _mf = app_config.memory_files
+        else:
+            from openjarvis.core.config import load_config
+
+            _mf = load_config().memory_files
+
+        _persona_sections = []
+        for _field, _heading in [
+            ("soul_path", "Agent Persona"),
+            ("memory_path", "Agent Memory"),
+            ("user_path", "User Profile"),
+        ]:
+            _path_str = getattr(_mf, _field, "")
+            if _path_str:
+                _p = _Path(_path_str).expanduser()
+                if _p.is_file():
+                    _content = _p.read_text(encoding="utf-8").strip()
+                    if _content:
+                        _persona_sections.append(
+                            f"## {_heading}\n\n{_content}"
+                        )
+        if _persona_sections:
+            prompt += "\n\n" + "\n\n".join(_persona_sections)
+    except Exception:
+        logging.getLogger("openjarvis.server").debug(
+            "Persona file append failed (non-fatal)",
+            exc_info=True,
+        )
 
     return [Message(role=Role.SYSTEM, content=prompt), *messages]
 

@@ -1,16 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Volume2, Loader2 } from 'lucide-react';
 import { AudioPlayer } from './AudioPlayer';
 import { ToolCallCard } from './ToolCallCard';
 import { ResearchTimeline } from './ResearchTimeline';
 import { rehypeCitations } from '../../lib/rehype-citations';
 import { XRayFooter } from './XRayFooter';
+import { synthesizeSpeech } from '../../lib/api';
 import type { ChatMessage } from '../../types';
 
 function stripThinkTags(text: string): string {
@@ -76,6 +77,38 @@ function CodeBlockPre({ children, ...props }: any) {
         {children}
       </pre>
     </div>
+  );
+}
+
+function SpeakerButton({ text }: { text: string }) {
+  const [loading, setLoading] = useState(false);
+
+  const handlePlay = useCallback(async () => {
+    if (!text || loading) return;
+    setLoading(true);
+    try {
+      const blob = await synthesizeSpeech(text);
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      await audio.play();
+    } catch {
+      // Silently fail — the user can try again
+    } finally {
+      setLoading(false);
+    }
+  }, [text, loading]);
+
+  return (
+    <button
+      onClick={handlePlay}
+      disabled={loading || !text}
+      className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer disabled:opacity-30"
+      style={{ color: 'var(--color-text-tertiary)' }}
+      title="Read aloud"
+    >
+      {loading ? <Loader2 size={14} className="animate-spin" /> : <Volume2 size={14} />}
+    </button>
   );
 }
 
@@ -178,8 +211,9 @@ export function MessageBubble({ message, isLive = false }: Props) {
         </div>
       )}
 
-      {/* Footer: copy + x-ray */}
+      {/* Footer: speaker replay + copy + x-ray */}
       <div className="flex items-center gap-2 mt-1.5">
+        <SpeakerButton text={cleanContent} />
         <CopyMessageButton content={cleanContent} />
       </div>
       <XRayFooter

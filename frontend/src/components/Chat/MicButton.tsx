@@ -6,9 +6,10 @@ interface MicButtonProps {
   onClick: () => void;
   disabled?: boolean;
   reason?: 'not-enabled' | 'no-backend' | 'streaming';
+  voiceMode?: boolean;
 }
 
-export function MicButton({ state, onClick, disabled, reason }: MicButtonProps) {
+export function MicButton({ state, onClick, disabled, reason, voiceMode }: MicButtonProps) {
   const [showTooltip, setShowTooltip] = useState(false);
 
   const tooltipText =
@@ -18,11 +19,13 @@ export function MicButton({ state, onClick, disabled, reason }: MicButtonProps) 
         ? 'Speech backend not configured'
         : reason === 'streaming'
           ? 'Wait for response'
-          : state === 'recording'
-            ? 'Stop recording'
-            : state === 'transcribing'
-              ? 'Transcribing...'
-              : 'Voice input';
+          : voiceMode
+            ? 'Exit voice mode'
+            : state === 'recording'
+              ? 'Stop recording'
+              : state === 'transcribing'
+                ? 'Transcribing...'
+                : 'Voice input';
 
   const isInactive = disabled || state === 'transcribing';
 
@@ -37,20 +40,20 @@ export function MicButton({ state, onClick, disabled, reason }: MicButtonProps) 
         disabled={isInactive}
         className="p-2 rounded-xl transition-all shrink-0"
         style={{
-          background: state === 'recording'
+          background: state === 'recording' || voiceMode
             ? 'var(--color-error)'
             : 'transparent',
-          color: state === 'recording'
+          color: state === 'recording' || voiceMode
             ? 'white'
             : isInactive
               ? 'var(--color-text-tertiary)'
               : 'var(--color-text-secondary)',
           cursor: isInactive ? 'default' : 'pointer',
           opacity: isInactive ? 0.35 : 1,
-          animation: state === 'recording' ? 'pulse 1.5s ease-in-out infinite' : 'none',
+          animation: state === 'recording' || voiceMode ? 'pulse 1.5s ease-in-out infinite' : 'none',
         }}
       >
-        {state === 'transcribing' ? (
+        {state === 'transcribing' || state === 'sending' ? (
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="10">
               <animateTransform attributeName="transform" type="rotate" from="0 8 8" to="360 8 8" dur="1s" repeatCount="indefinite" />
@@ -63,7 +66,7 @@ export function MicButton({ state, onClick, disabled, reason }: MicButtonProps) 
           </svg>
         )}
       </button>
-      {showTooltip && isInactive && (
+      {showTooltip && (isInactive || voiceMode) && (
         <div
           className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap pointer-events-none"
           style={{

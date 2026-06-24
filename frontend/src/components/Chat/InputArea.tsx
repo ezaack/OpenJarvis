@@ -101,8 +101,19 @@ export function InputArea() {
     state: speechState,
     error: speechError,
     available: speechAvailable,
+    voiceMode,
+    wakeMode,
+    level,
     startRecording,
     stopRecording,
+    runVoiceLoop,
+    toggleVoiceMode,
+    toggleWakeMode,
+    abort: abortVoiceMode,
+    autoSubmitRef,
+    isPlaying,
+    isSending,
+    isWaking,
   } = useSpeech();
 
   // Abort in-flight stream when the user switches models mid-generation.
@@ -134,8 +145,86 @@ export function InputArea() {
     }
   }, [speechError]);
 
+  // Register auto-submit for voice mode: sends transcribed text to chat
+  // and returns the assistant reply for TTS playback.
+  const voiceSendMessage = useCallback(async (text: string): Promise<string> => {
+    if (!selectedModel) {
+      toast.error('Pick a model first (⌘K)');
+      return '';
+    }
+
+    let convId = activeId;
+    if (!convId) {
+      convId = createConversation(selectedModel);
+    }
+
+    const userMsg: ChatMessage = {
+      id: generateId(),
+      role: 'user',
+      content: text,
+      timestamp: Date.now(),
+    };
+    addMessage(convId, userMsg);
+
+    const currentMessages = useAppStore.getState().messages;
+    const apiMessages = currentMessages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+
+    const assistantMsg: ChatMessage = {
+      id: generateId(),
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+    };
+    addMessage(convId, assistantMsg);
+
+    setStreamState({ isStreaming: true, phase: 'Generating...', elapsedMs: 0, activeToolCalls: [], content: '' });
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    let accumulatedContent = '';
+    try {
+      for await (const sseEvent of streamChat(
+        { model: selectedModel, messages: apiMessages, stream: true, temperature, max_tokens: maxTokens },
+        controller.signal,
+      )) {
+        try {
+          const data = JSON.parse(sseEvent.data);
+          const delta = data.choices?.[0]?.delta;
+          if (delta?.content) {
+            accumulatedContent += delta.content;
+            setStreamState({ content: accumulatedContent, phase: '' });
+            updateLastAssistant(convId, accumulatedContent);
+          }
+          if (data.choices?.[0]?.finish_reason === 'stop') break;
+        } catch { /* skip */ }
+      }
+    } catch {
+      if (!accumulatedContent) accumulatedContent = '(Generation stopped)';
+    } finally {
+      if (!accumulatedContent) accumulatedContent = 'No response was generated.';
+      updateLastAssistant(convId, accumulatedContent);
+      resetStream();
+      abortRef.current = null;
+    }
+
+    return accumulatedContent;
+  }, [activeId, selectedModel, temperature, maxTokens, createConversation, addMessage, updateLastAssistant, setStreamState, resetStream]);
+
+  // Wire auto-submit ref so voice mode can submit to chat
+  useEffect(() => {
+    autoSubmitRef.current = voiceMode ? voiceSendMessage : null;
+  }, [voiceMode, voiceSendMessage, autoSubmitRef]);
+
   const handleMicClick = useCallback(async () => {
+    if (voiceMode) {
+      toggleVoiceMode();
+      return;
+    }
     if (speechState === 'recording') {
+      // Non-voice mode: stop recording and append text to input
       try {
         const text = await stopRecording();
         if (text) {
@@ -147,7 +236,7 @@ export function InputArea() {
     } else {
       await startRecording();
     }
-  }, [speechState, startRecording, stopRecording]);
+  }, [voiceMode, speechState, startRecording, stopRecording, toggleVoiceMode]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -562,6 +651,25 @@ export function InputArea() {
             <Search size={12} />
             Deep Research
           </button>
+          <button
+            type="button"
+            onClick={toggleWakeMode}
+            disabled={streamState.isStreaming}
+            aria-pressed={wakeMode}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50"
+            style={{
+              background: wakeMode ? 'var(--color-accent-subtle)' : 'transparent',
+              border: `1px solid ${wakeMode ? 'var(--color-accent)' : 'var(--color-border)'}`,
+              color: wakeMode ? 'var(--color-accent)' : 'var(--color-text-tertiary)',
+            }}
+            title={wakeMode ? 'Wake word: on (speak to activate)' : 'Wake word: off'}
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M5 3a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0V3z" />
+              <path d="M3.5 6.5A.5.5 0 0 1 4 7v1a4 4 0 0 0 8 0V7a.5.5 0 0 1 1 0v1a5 5 0 0 1-4.5 4.975V15h3a.5.5 0 0 1 0 1h-7a.5.5 0 0 1 0-1h3v-2.025A5 5 0 0 1 3 8V7a.5.5 0 0 1 .5-.5z" />
+            </svg>
+            Wake Word
+          </button>
         </div>
         {deepResearch && corpusSync.syncing && corpusSync.itemsSynced > 0 && (
           <div
@@ -589,11 +697,11 @@ export function InputArea() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={selectedModel ? 'Message OpenJarvis...' : 'Pick a model first (⌘K)...'}
+          placeholder={voiceMode ? 'Voice mode active...' : selectedModel ? 'Message OpenJarvis...' : 'Pick a model first (⌘K)...'}
           rows={1}
           className="flex-1 bg-transparent outline-none resize-none text-sm leading-relaxed"
           style={{ color: 'var(--color-text)', maxHeight: '200px' }}
-          disabled={streamState.isStreaming || modelLoading}
+          disabled={streamState.isStreaming || modelLoading || voiceMode}
         />
         {streamState.isStreaming ? (
           <button
@@ -609,8 +717,9 @@ export function InputArea() {
             <MicButton
               state={speechState}
               onClick={handleMicClick}
-              disabled={micDisabled}
+              disabled={micDisabled && !voiceMode}
               reason={micReason}
+              voiceMode={voiceMode}
             />
             <button
               onClick={sendMessage}
@@ -627,10 +736,52 @@ export function InputArea() {
           </div>
         )}
       </div>
+      {/* Wake word / voice mode indicator */}
+      {(wakeMode || voiceMode) && (
+        <div
+          className="flex items-center justify-center gap-2 mt-2 px-3 py-2 rounded-xl text-xs"
+          style={{
+            background: 'var(--color-accent-subtle)',
+            border: '1px solid var(--color-accent)',
+            color: 'var(--color-accent)',
+          }}
+        >
+          {/* Level meter (visible in all states when mic is hot) */}
+          <div className="flex items-end gap-[2px] h-4">
+            {[0.2, 0.35, 0.5, 0.65, 0.8].map((t, i) => (
+              <div
+                key={i}
+                className="w-[3px] rounded-full transition-all duration-75"
+                style={{
+                  height: `${Math.max(4, level > t ? 16 : 4)}px`,
+                  background: level > t ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
+                }}
+              />
+            ))}
+          </div>
+          {isWaking && (
+            <>Waiting for wake word... &middot; Speak to start &middot; <kbd className="font-mono" style={{ fontWeight: 600 }}>Ctrl+Space</kbd> to toggle</>
+          )}
+          {speechState === 'recording' && (
+            <>Listening... &middot; Press <kbd className="font-mono" style={{ fontWeight: 600 }}>Ctrl+Space</kbd> to stop</>
+          )}
+          {speechState === 'transcribing' && 'Transcribing...'}
+          {speechState === 'sending' && 'Sending...'}
+          {isPlaying && 'Speaking...'}
+          {speechState === 'idle' && !isPlaying && !isWaking && 'Voice mode active'}
+        </div>
+      )}
       <div className="flex items-center justify-center mt-2 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
         <span>
-          <kbd className="font-mono">Enter</kbd> to send &middot;{' '}
-          <kbd className="font-mono">Shift+Enter</kbd> for new line
+          {voiceMode ? (
+            <>Press <kbd className="font-mono">Ctrl+Space</kbd> to exit voice mode</>
+          ) : wakeMode ? (
+            <>Wake word active &middot; <kbd className="font-mono">Ctrl+Space</kbd> to toggle</>
+          ) : (
+            <><kbd className="font-mono">Enter</kbd> to send &middot;{' '}
+            <kbd className="font-mono">Shift+Enter</kbd> for new line &middot;{' '}
+            <kbd className="font-mono">Ctrl+Space</kbd> for voice</>
+          )}
         </span>
       </div>
     </div>

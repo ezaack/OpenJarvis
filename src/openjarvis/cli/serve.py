@@ -472,6 +472,17 @@ def serve(
     except Exception as exc:
         logger.debug("Speech backend discovery failed: %s", exc)
 
+    # Set up TTS backend
+    tts_backend = None
+    try:
+        from openjarvis.speech._discovery import get_tts_backend
+
+        tts_backend = get_tts_backend(config)
+        if tts_backend:
+            console.print(f"  TTS:    [cyan]{tts_backend.backend_id}[/cyan]")
+    except Exception as exc:
+        logger.debug("TTS backend discovery failed: %s", exc)
+
     # Create app
     from openjarvis.server.app import create_app
 
@@ -682,6 +693,7 @@ def serve(
         memory_backend=memory_backend,
         memory_service=memory_service,
         speech_backend=speech_backend,
+        tts_backend=tts_backend,
         agent_manager=agent_manager,
         agent_scheduler=agent_scheduler,
         api_key=api_key,

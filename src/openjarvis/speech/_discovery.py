@@ -1,4 +1,4 @@
-"""Auto-discover available speech-to-text backends."""
+"""Auto-discover available speech-to-text and text-to-speech backends."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from openjarvis.core.config import JarvisConfig
     from openjarvis.speech._stubs import SpeechBackend
+    from openjarvis.speech.tts import TTSBackend
 
 # Priority order: local first, then cloud
 DISCOVERY_ORDER = [
@@ -70,6 +71,70 @@ def get_speech_backend(config: "JarvisConfig") -> Optional["SpeechBackend"]:
     for key in DISCOVERY_ORDER:
         backend = _create_backend(key, config)
         if backend is not None:
+            return backend
+
+    return None
+
+
+# ---- TTS discovery (mirrors STT discovery above) ----
+
+
+def _create_tts_backend(
+    key: str,
+    config: "JarvisConfig",
+) -> Optional["TTSBackend"]:
+    """Try to instantiate a TTS backend by registry key."""
+    from openjarvis.core.registry import TTSRegistry
+
+    if not TTSRegistry.contains(key):
+        return None
+
+    try:
+        backend_cls = TTSRegistry.get(key)
+
+        if key == "kokoro":
+            return backend_cls()
+        elif key == "cartesia":
+            import os
+
+            api_key = os.environ.get("CARTESIA_API_KEY", "")
+            if not api_key:
+                return None
+            return backend_cls(api_key=api_key)
+        elif key == "openai_tts":
+            import os
+
+            api_key = os.environ.get("OPENAI_API_KEY", "")
+            if not api_key:
+                return None
+            return backend_cls(api_key=api_key)
+        else:
+            return backend_cls()
+    except Exception:
+        return None
+
+
+TTS_DISCOVERY_ORDER = [
+    "kokoro",
+    "cartesia",
+    "openai_tts",
+]
+
+
+def get_tts_backend(config: "JarvisConfig") -> Optional["TTSBackend"]:
+    """Resolve the TTS backend from config.
+
+    Tries backends in priority order and returns the first healthy one.
+    Currently no ``config.tts`` — always auto-discover.
+    """
+    from openjarvis.core.registry import TTSRegistry
+
+    # Trigger registration of built-in TTS backends
+    import openjarvis.speech.kokoro_tts  # noqa: F401
+
+    for key in TTS_DISCOVERY_ORDER:
+        backend = _create_tts_backend(key, config)
+        if backend is not None and backend.health():
             return backend
 
     return None

@@ -7,7 +7,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -869,6 +869,34 @@ async def learning_policy(request: Request):
     return result
 
 
+# ---- TTS routes ----
+
+tts_router = APIRouter(prefix="/v1/tts", tags=["tts"])
+
+
+@tts_router.post("/synthesize")
+async def synthesize_speech(request: Request, body: dict):
+    """Synthesize text to audio using the configured TTS backend."""
+    backend = getattr(request.app.state, "tts_backend", None)
+    if backend is None:
+        raise HTTPException(status_code=501, detail="TTS backend not configured")
+    text = body.get("text", "")
+    if not text:
+        raise HTTPException(status_code=400, detail="Missing 'text' field")
+    voice_id = body.get("voice_id", "af_heart")
+    speed = body.get("speed", 1.0)
+    try:
+        result = backend.synthesize(
+            text, voice_id=voice_id, speed=speed, output_format="wav"
+        )
+    except Exception as exc:
+        logger.exception("TTS synthesis failed")
+        raise HTTPException(
+            status_code=500, detail=f"TTS synthesis failed: {exc}"
+        ) from exc
+    return Response(content=result.audio, media_type=f"audio/{result.format}")
+
+
 # ---- Speech routes ----
 
 speech_router = APIRouter(prefix="/v1/speech", tags=["speech"])
@@ -1052,6 +1080,7 @@ def include_all_routes(app) -> None:
     app.include_router(websocket_router)
     app.include_router(learning_router)
     app.include_router(speech_router)
+    app.include_router(tts_router)
     app.include_router(feedback_router)
     app.include_router(optimize_router)
 
@@ -1101,6 +1130,7 @@ __all__ = [
     "websocket_router",
     "learning_router",
     "speech_router",
+    "tts_router",
     "feedback_router",
     "optimize_router",
 ]

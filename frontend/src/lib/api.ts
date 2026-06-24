@@ -1123,3 +1123,21 @@ export async function setInferenceSource(
     throw new Error(e?.message ?? e ?? 'Failed to save inference source');
   }
 }
+
+// ---------------------------------------------------------------------------
+// TTS
+// ---------------------------------------------------------------------------
+
+export async function synthesizeSpeech(
+  text: string,
+  voiceId = 'af_heart',
+  speed = 1.0,
+): Promise<Blob> {
+  const res = await fetch(`${getBase()}/v1/tts/synthesize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice_id: voiceId, speed }),
+  });
+  if (!res.ok) throw new Error('TTS failed');
+  return res.blob();
+}

@@ -1,7 +1,7 @@
 # Speaking Jarvis — Shared Context
 
 ## Decisions
-- **Wake word**: DEFERRED. Keyboard shortcut (Ctrl+Space) for listen toggle.
+- **Wake word**: ACTIVE. Use a wake word (e.g. "Hey Jarvis") to trigger listening. Continuous local audio monitoring detects the wake word and starts recording. Keyboard shortcut (Ctrl+Space) remains as a secondary toggle.
 - **TTS backend**: Kokoro (local, open-source, no API key).
 - **No streaming TTS**: Generate full audio before playback (Kokoro limitation).
 - **Auto-send**: After recording stops, auto-transcribe → auto-submit to chat.
