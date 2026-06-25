@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import numpy as np
 
 from openjarvis.core.registry import TTSRegistry
 from openjarvis.speech.tts import TTSResult
@@ -60,23 +62,40 @@ def test_cartesia_synthesize():
 
 
 # ---------------------------------------------------------------------------
-# Kokoro backend tests
+# Piper backend tests
 # ---------------------------------------------------------------------------
 
 
-def test_kokoro_registered():
-    from openjarvis.speech.kokoro_tts import KokoroTTSBackend
+def test_piper_registered():
+    from openjarvis.speech.piper_tts import PiperTTSBackend
 
-    TTSRegistry.register_value("kokoro", KokoroTTSBackend)
-    assert TTSRegistry.contains("kokoro")
+    TTSRegistry.register_value("piper", PiperTTSBackend)
+    assert TTSRegistry.contains("piper")
 
 
-def test_kokoro_health_false_without_package():
-    from openjarvis.speech.kokoro_tts import KokoroTTSBackend
+def test_piper_health_mocked():
+    from openjarvis.speech.piper_tts import PiperTTSBackend
 
-    backend = KokoroTTSBackend()
-    # Without kokoro installed, health returns False
-    assert backend.health() is False
+    # Mock _ensure_voice (no download) and PiperVoice (no load)
+    with patch("openjarvis.speech.piper_tts._ensure_voice") as mock_ev:
+        mock_ev.return_value = "fake_model.onnx"
+        with patch("piper.PiperVoice") as mock_pv_cls:
+            mock_pv_cls.load.return_value = MagicMock()
+            backend = PiperTTSBackend()
+            assert backend.health() is True
+
+    # Raise ImportError from the import inside _ensure_loaded
+    original_import = __builtins__["__import__"] if isinstance(__builtins__, dict) else __builtins__.__import__
+
+    def _mock_import(name, *args, **kwargs):
+        if name == "piper":
+            raise ImportError("No module named 'piper'")
+        return original_import(name, *args, **kwargs)
+
+    backend2 = PiperTTSBackend()
+    backend2._voice = None
+    with patch("builtins.__import__", side_effect=_mock_import):
+        assert backend2.health() is False
 
 
 # ---------------------------------------------------------------------------

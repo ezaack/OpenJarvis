@@ -92,7 +92,7 @@ def _create_tts_backend(
     try:
         backend_cls = TTSRegistry.get(key)
 
-        if key == "kokoro":
+        if key == "piper":
             return backend_cls()
         elif key == "cartesia":
             import os
@@ -115,7 +115,7 @@ def _create_tts_backend(
 
 
 TTS_DISCOVERY_ORDER = [
-    "kokoro",
+    "piper",
     "cartesia",
     "openai_tts",
 ]
@@ -130,7 +130,7 @@ def get_tts_backend(config: "JarvisConfig") -> Optional["TTSBackend"]:
     from openjarvis.core.registry import TTSRegistry
 
     # Trigger registration of built-in TTS backends
-    import openjarvis.speech.kokoro_tts  # noqa: F401
+    import openjarvis.speech.piper_tts  # noqa: F401
 
     for key in TTS_DISCOVERY_ORDER:
         backend = _create_tts_backend(key, config)
