@@ -1,4 +1,4 @@
-"""Auto-discover available speech-to-text and text-to-speech backends."""
+"""Auto-discover available speech-to-text, text-to-speech, and wake word backends."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from openjarvis.core.config import JarvisConfig
     from openjarvis.speech._stubs import SpeechBackend
     from openjarvis.speech.tts import TTSBackend
+    from openjarvis.speech.voice_loop import VoiceLoop
 
 # Priority order: local first, then cloud
 DISCOVERY_ORDER = [
@@ -138,3 +139,54 @@ def get_tts_backend(config: "JarvisConfig") -> Optional["TTSBackend"]:
             return backend
 
     return None
+
+
+# ---- Voice loop factory ----
+
+
+def get_voice_loop(
+    config: "JarvisConfig",
+    stt_backend: Optional["SpeechBackend"],
+    tts_backend: Optional["TTSBackend"],
+    engine=None,
+    model: str = "",
+) -> Optional["VoiceLoop"]:  # noqa: F821
+    """Create a VoiceLoop if STT backend is available.
+
+    Returns ``None`` when voice is disabled or STT is missing.
+    TTS is optional — the loop will skip audio responses if not available.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    if not config.speech.wakeword.enabled:
+        logger.info("Voice loop disabled: wakeword.enabled is False in config")
+        return None
+    if stt_backend is None:
+        logger.info("Voice loop disabled: no STT backend available")
+        return None
+    if engine is None:
+        logger.info("Voice loop disabled: no inference engine available")
+        return None
+
+    try:
+        from openjarvis.speech.voice_loop import VoiceLoop
+
+        logger.info(
+            "Creating VoiceLoop: stt=%s tts=%s model=%s",
+            stt_backend.backend_id,
+            tts_backend.backend_id if tts_backend else "none",
+            model,
+        )
+        return VoiceLoop(
+            stt_backend=stt_backend,
+            tts_backend=tts_backend,
+            engine=engine,
+            model=model,
+            require_wake_word=False,
+            wake_phrases=["hey jarvis", "hey ada", "jarvis"],
+        )
+    except Exception as exc:
+        logger.warning("Voice loop creation failed: %s", exc)
+        return None

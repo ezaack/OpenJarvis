@@ -378,6 +378,81 @@ export async function fetchSpeechHealth(): Promise<SpeechHealth> {
 }
 
 // ---------------------------------------------------------------------------
+// Wake word / voice detection (WebSocket to voice loop)
+// ---------------------------------------------------------------------------
+
+export interface WakeWordHealth {
+  available: boolean;
+  reason?: string;
+  backend?: string;
+}
+
+export interface WakeWordDetectionEvent {
+  type: 'detection';
+  confidence: number;
+  threshold: number;
+}
+
+/**
+ * Connect to the voice loop status WebSocket.
+ *
+ * Listens for state changes and fires the detection callback when the
+ * voice loop transitions to "greeting" or "listening" (wake word detected).
+ */
+export function connectWakeWordStream(
+  onDetection: (event: WakeWordDetectionEvent) => void,
+  onError?: (detail: string) => void,
+  onOpen?: () => void,
+): { send: (data: ArrayBuffer) => void; close: () => void } {
+  const base = getBase().replace(/^http/, 'ws');
+  const apiKey = getApiKey();
+  const query = apiKey ? `?token=${encodeURIComponent(apiKey)}` : '';
+  const ws = new WebSocket(`${base}/v1/voice/status${query}`);
+  let closed = false;
+
+  ws.onopen = () => {
+    onOpen?.();
+  };
+
+  ws.onmessage = (msg) => {
+    try {
+      const data = JSON.parse(msg.data);
+      // When the voice loop transitions to greeting/listening, wake word
+      // was detected.
+      if (data.state === 'greeting' || data.state === 'listening') {
+        onDetection({ type: 'detection', confidence: 0.95, threshold: 0.5 });
+      }
+    } catch {
+      // Ignore non-JSON messages
+    }
+  };
+
+  ws.onerror = () => {
+    if (!closed) onError?.('WebSocket connection error');
+  };
+
+  ws.onclose = () => {
+    closed = true;
+  };
+
+  return {
+    send: (_data: ArrayBuffer) => {
+      // Voice status WS is receive-only; send is a no-op
+    },
+    close: () => {
+      closed = true;
+      ws.close();
+    },
+  };
+}
+
+export async function fetchWakeWordHealth(): Promise<WakeWordHealth> {
+  const res = await apiFetch(`/v1/voice/wakeword/health`);
+  if (!res.ok) return { available: false };
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
 // Agent Manager
 // ---------------------------------------------------------------------------
 

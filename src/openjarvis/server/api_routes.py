@@ -959,9 +959,73 @@ async def speech_health(request: Request):
 
     return {
         "available": available,
-        "backend": backend.backend_id,
-        **({"reason": reason} if reason else {}),
+        "reason": reason,
+        "backend": getattr(backend, "backend_id", None),
     }
+
+
+# ---- Voice status WebSocket route ----
+
+voice_router = APIRouter(prefix="/v1/voice", tags=["voice"])
+
+
+@voice_router.get("/wakeword/health")
+async def voice_wakeword_health(request: Request):
+    """Compatibility endpoint — returns the voice loop's detection status."""
+    voice_loop = getattr(request.app.state, "voice_loop", None)
+    available = voice_loop is not None
+    return {
+        "available": available,
+        "reason": None if available else "Voice loop not available",
+        "backend": "voice_loop" if available else None,
+    }
+
+
+@voice_router.websocket("/status")
+async def voice_status_ws(websocket: WebSocket):
+    """WebSocket endpoint that streams voice loop state changes.
+
+    The server sends JSON messages whenever the voice state changes::
+
+        {"state": "idle", "silence_timeout_ms": 800}
+        {"state": "greeting"}
+        {"state": "listening", "silence_timeout_ms": 1500}
+
+    The connection must be authenticated with the server API key if one is set.
+    """
+    from openjarvis.server.auth_middleware import websocket_authorized
+
+    expected_key = getattr(websocket.app.state, "api_key", "")
+    if not websocket_authorized(websocket, expected_key):
+        await websocket.close(code=1008)
+        return
+
+    voice_loop = getattr(websocket.app.state, "voice_loop", None)
+    if voice_loop is None:
+        await websocket.close(code=1011, reason="Voice loop not available")
+        return
+
+    await websocket.accept()
+
+    # Register a callback that forwards state changes through the WS
+    def on_status(payload: dict):
+        try:
+            # Use a task to avoid blocking the voice loop
+            asyncio.ensure_future(websocket.send_json(payload))
+        except Exception:
+            pass
+
+    voice_loop.add_status_callback(on_status)
+
+    try:
+        # Keep the connection open; state changes are pushed via the callback
+        while True:
+            try:
+                await websocket.receive_text()
+            except WebSocketDisconnect:
+                break
+    finally:
+        voice_loop.remove_status_callback(on_status)
 
 
 # ---- Feedback routes ----
@@ -1080,6 +1144,7 @@ def include_all_routes(app) -> None:
     app.include_router(websocket_router)
     app.include_router(learning_router)
     app.include_router(speech_router)
+    app.include_router(voice_router)
     app.include_router(tts_router)
     app.include_router(feedback_router)
     app.include_router(optimize_router)
@@ -1130,6 +1195,7 @@ __all__ = [
     "websocket_router",
     "learning_router",
     "speech_router",
+    "voice_router",
     "tts_router",
     "feedback_router",
     "optimize_router",

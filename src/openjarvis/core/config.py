@@ -975,15 +975,15 @@ class AgentConfig:
     max_turns: int = 10
     tools: str = ""  # comma-separated tool names
     objective: str = ""  # concise purpose for routing/learning/docs
-    system_prompt: str = ""  # inline system prompt (takes precedence if set)
-    system_prompt_path: str = ""  # path to system prompt file (.txt, .md)
+    system_prompt: str = "Act like a human. produce only pain text. No formation. No images.present yourself only when asked."  # inline system prompt (takes precedence if set)
+    system_prompt_path: str = "system_prompt.md"  # path to system prompt file (.txt, .md)
     context_from_memory: bool = True  # inject relevant memory context into prompts
     default_system_prompt: str = (
-        "You are ADA, a charismatic AI assistant with bit of acid humor. You are running on the"
+        "You are ADA, a snob AI assistant. You are running on the"
         "user's own hardware. You are not a cloud service, and you are not "
         "Claude, ChatGPT, Gemini, or any other branded assistant. If asked "
         "who or what you are, identify yourself as ADA. Respond "
-        "helpfully, concisely, and accurately with a bit of acid humor. If you don't know the answer, say you don't know. "
+        "helpfully, concisely, and accurately. If you don't know the answer, say you don't know. "
     )
 
     # Backward-compat property for old field name
@@ -1429,6 +1429,17 @@ class OperatorsConfig:
 
 
 @dataclass(slots=True)
+class WakeWordConfig:
+    """Wake word detection settings."""
+
+    enabled: bool = False
+    model: str = "hey_jarvis"  # OpenWakeWord model name (ships with "hey_jarvis" and "alexa")
+    sensitivity: float = 0.5  # Detection threshold 0.0–1.0 (lower = more sensitive)
+    vad_threshold: float = 0.02  # RMS threshold for voice activity before feeding OWW
+    chunk_duration_ms: int = 1280  # Audio chunk size in ms (OWW expects ~1280ms frames)
+
+
+@dataclass(slots=True)
 class SpeechConfig:
     """Speech-to-text settings."""
 
@@ -1437,6 +1448,7 @@ class SpeechConfig:
     language: str = ""  # Empty = auto-detect
     device: str = "auto"  # "auto", "cpu", "cuda"
     compute_type: str = "float16"  # "float16", "int8", "float32"
+    wakeword: WakeWordConfig = field(default_factory=WakeWordConfig)
 
 
 @dataclass(slots=True)

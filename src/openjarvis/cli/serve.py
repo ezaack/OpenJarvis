@@ -472,7 +472,7 @@ def serve(
     except Exception as exc:
         logger.debug("Speech backend discovery failed: %s", exc)
 
-    # Set up TTS backend
+    # Set up TTS backend (needed before voice loop)
     tts_backend = None
     try:
         from openjarvis.speech._discovery import get_tts_backend
@@ -482,6 +482,28 @@ def serve(
             console.print(f"  TTS:    [cyan]{tts_backend.backend_id}[/cyan]")
     except Exception as exc:
         logger.debug("TTS backend discovery failed: %s", exc)
+
+    # Set up voice loop (replaces old wakeword detector)
+    voice_loop = None
+    try:
+        from openjarvis.speech._discovery import get_voice_loop
+
+        voice_loop = get_voice_loop(
+            config=config,
+            stt_backend=speech_backend,
+            tts_backend=tts_backend,
+            engine=engine,
+            model=model_name,
+        )
+        if voice_loop:
+            console.print(
+                f"  Voice:  [cyan]active[/cyan] "
+                f"(wake={config.speech.wakeword.model}, "
+                f"stt={speech_backend.backend_id if speech_backend else 'none'}, "
+                f"tts={tts_backend.backend_id if tts_backend else 'none'})"
+            )
+    except Exception as exc:
+        logger.debug("Voice loop discovery failed: %s", exc)
 
     # Create app
     from openjarvis.server.app import create_app
@@ -694,6 +716,7 @@ def serve(
         memory_service=memory_service,
         speech_backend=speech_backend,
         tts_backend=tts_backend,
+        voice_loop=voice_loop,
         agent_manager=agent_manager,
         agent_scheduler=agent_scheduler,
         api_key=api_key,
@@ -725,5 +748,19 @@ def serve(
         )
 
     import uvicorn
+    from uvicorn.config import LOGGING_CONFIG
 
-    uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")
+    # Suppress uvicorn's noisy INFO logs: access logs ("GET /health 200"),
+    # WebSocket lifecycle ("connection open", "connection closed"), and
+    # the per-request lines. Override the default log config to set all
+    # uvicorn loggers to WARNING so only errors surface.
+    _log_config = {
+        **LOGGING_CONFIG,
+        "loggers": {
+            "uvicorn": {"handlers": ["default"], "level": "WARNING", "propagate": False},
+            "uvicorn.error": {"level": "WARNING"},
+            "uvicorn.access": {"handlers": ["access"], "level": "WARNING", "propagate": False},
+        },
+    }
+
+    uvicorn.run(app, host=bind_host, port=bind_port, log_config=_log_config, access_log=False)

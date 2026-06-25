@@ -154,6 +154,7 @@ def create_app(
     memory_service=None,
     speech_backend=None,
     tts_backend=None,
+    voice_loop=None,
     agent_manager=None,
     agent_scheduler=None,
     api_key: str = "",
@@ -226,6 +227,7 @@ def create_app(
     app.state.memory_service = memory_service
     app.state.speech_backend = speech_backend
     app.state.tts_backend = tts_backend
+    app.state.voice_loop = voice_loop
     app.state.agent_manager = agent_manager
     app.state.agent_scheduler = agent_scheduler
     app.state.session_start = time.time()
@@ -305,6 +307,27 @@ def create_app(
             if svc is not None:
                 try:
                     svc.stop()
+                except Exception:
+                    pass
+
+    # Start/stop voice loop
+    if voice_loop is not None:
+
+        @app.on_event("startup")
+        async def _start_voice_loop() -> None:
+            vl = getattr(app.state, "voice_loop", None)
+            if vl is not None:
+                try:
+                    await vl.start()
+                except Exception:
+                    logger.debug("Voice loop start failed", exc_info=True)
+
+        @app.on_event("shutdown")
+        async def _stop_voice_loop() -> None:
+            vl = getattr(app.state, "voice_loop", None)
+            if vl is not None:
+                try:
+                    await vl.stop()
                 except Exception:
                     pass
 

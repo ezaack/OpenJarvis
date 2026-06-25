@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Routes, Route } from 'react-router';
 import { Layout } from './components/Layout';
-import { ChatPage } from './pages/ChatPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { GetStartedPage } from './pages/GetStartedPage';
+import { ConfigPage } from './pages/ConfigPage';
 import { AgentsPage } from './pages/AgentsPage';
 import { DataSourcesPage } from './pages/DataSourcesPage';
 import { LogsPage } from './pages/LogsPage';
@@ -185,7 +185,7 @@ export default function App() {
       <UpdateChecker />
       <Routes>
         <Route element={<Layout />}>
-          <Route index element={<ChatPage />} />
+          <Route index element={<ConfigPage />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="get-started" element={<GetStartedPage />} />
