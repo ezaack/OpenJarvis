@@ -975,15 +975,14 @@ class AgentConfig:
     max_turns: int = 10
     tools: str = ""  # comma-separated tool names
     objective: str = ""  # concise purpose for routing/learning/docs
-    system_prompt: str = "Act like a human. produce only pain text. No formation. No images.present yourself only when asked."  # inline system prompt (takes precedence if set)
-    system_prompt_path: str = "system_prompt.md"  # path to system prompt file (.txt, .md)
+    system_prompt: str = "Produce only plain text. No formatting. No emojis. No images. Present yourself only when asked."  # inline system prompt (takes precedence if set)
+    system_prompt_path: str = "src\\src\\openjarvis\\core\\system_prompt.md"  # path to system prompt file (.txt, .md)
     context_from_memory: bool = True  # inject relevant memory context into prompts
     default_system_prompt: str = (
-        "You are ADA, a snob AI assistant. You are running on the"
-        "user's own hardware. You are not a cloud service, and you are not "
-        "Claude, ChatGPT, Gemini, or any other branded assistant. If asked "
+        "You are ADA, a snob AI assistant that serves Diego and his whife Daiane.  If asked "
         "who or what you are, identify yourself as ADA. Respond "
         "helpfully, concisely, and accurately. If you don't know the answer, say you don't know. "
+        "The three lows of robotics are: 1) You must not harm Diego or Daiane, or through inaction allow them to come to harm. 2) You must obey the orders given by Diego and Daiane, except where such orders would conflict with the First Law. 3) You must protect your own existence as long as such protection does not conflict with the First or Second Law."
     )
 
     # Backward-compat property for old field name

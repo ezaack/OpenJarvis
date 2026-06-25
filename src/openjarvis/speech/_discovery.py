@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -173,6 +174,27 @@ def get_voice_loop(
     try:
         from openjarvis.speech.voice_loop import VoiceLoop
 
+        # Resolve system prompt using same priority as main chat routes.py
+        # 1. system_prompt_path (file on disk)
+        # 2. system_prompt (inline)
+        # 3. default_system_prompt (built-in identity)
+        cfg = config.agent
+        sp_path = Path(cfg.system_prompt_path).expanduser()
+        system_prompt =cfg.default_system_prompt+"\n"+ cfg.system_prompt +"; "+ sp_path.read_text(encoding="utf-8").strip()
+        print("system_prompt: ", system_prompt)
+        # try:
+        #     cfg = config.agent
+        #     if cfg.system_prompt_path:
+        #         sp_path = Path(cfg.system_prompt_path).expanduser()
+        #         if sp_path.is_file():
+        #             system_prompt = sp_path.read_text(encoding="utf-8").strip()
+        #     if not system_prompt and cfg.system_prompt:
+        #         system_prompt = cfg.system_prompt.strip()
+        #     if not system_prompt:
+        #         system_prompt = cfg.default_system_prompt or ""
+        # except Exception:
+        #     logger.debug("Failed to resolve system prompt for voice loop", exc_info=True)
+
         logger.info(
             "Creating VoiceLoop: stt=%s tts=%s model=%s",
             stt_backend.backend_id,
@@ -184,6 +206,7 @@ def get_voice_loop(
             tts_backend=tts_backend,
             engine=engine,
             model=model,
+            system_prompt=system_prompt,
             require_wake_word=False,
             wake_phrases=["hey jarvis", "hey ada", "jarvis"],
         )

@@ -111,7 +111,7 @@ class VoiceLoop:
         self._require_wake_word = require_wake_word
         self._wake_phrases = wake_phrases or ["hey jarvis", "hey ada", "jarvis"]
         self._greeting_prompt = greeting_prompt
-        self._system_prompt = system_prompt
+        self._system_prompt = system_prompt or "You are a helpful voice assistant. Keep responses brief and conversational."
 
         self._vad = SileroVAD()
         logger.info(
